@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "staff": {
+      "title": "Staff",
+      "description": "Senarai Rekod Staf / Kakitangan KPMBP",
+      "type": "object",
+      "properties": {
+        "ID": { "type": "string" },
+        "Nama": { "type": "string" },
+        "Jawatan": { "type": "string" },
+        "Bahagian": { "type": "string" },
+        "DepartmentID": { "type": "string" },
+        "Gred": { "type": "string" },
+        "Email": { "type": "string" },
+        "NoTel": { "type": "string" },
+        "NoBilik": { "type": "string" },
+        "Gambar": { "type": "string" },
+        "Pendidikan": { "type": "string" },
+        "Anugerah": { "type": "string" },
+        "Penyelidikan": { "type": "string" },
+        "BidangKepakaran": { "type": "string" },
+        "Catatan": { "type": "string" },
+        "Status": { "type": "string" }
+      },
+      "required": ["ID", "Nama"]
+    },
+    "committees": {
+      "title": "StaffCommittee",
+      "description": "Rekod Jawatankuasa Kakitangan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "staff_id": { "type": "string" },
+        "staff_nama": { "type": "string" },
+        "jawatankuasa": { "type": "string" },
+        "peranan": { "type": "string" },
+        "peringkat": { "type": "string" },
+        "tahun": { "type": "string" },
+        "catatan": { "type": "string" }
+      },
+      "required": ["id", "staff_id"]
+    }
+  }
+}
