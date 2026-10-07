@@ -6,12 +6,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search,
-  Database, 
-  UserPlus, 
   Filter, 
   X, 
   RotateCcw, 
-  Briefcase, 
   UserCheck, 
   ShieldAlert, 
   MapPin,
@@ -21,9 +18,23 @@ import {
   Sparkles,
   Settings,
   Lock,
-  Pencil,
   Smartphone,
-  Download
+  Calendar,
+  PhoneCall,
+  BookOpen,
+  FileText,
+  Bell,
+  Users,
+  Compass,
+  MessageCircle,
+  CheckCircle2,
+  Shield,
+  Bookmark,
+  School,
+  ArrowRight,
+  GraduationCap,
+  Building2,
+  Check
 } from 'lucide-react';
 import { Staff, DivisionType, SyncConfig, StaffCommittee, AuthorizedAdmin } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
@@ -38,17 +49,33 @@ import { CommitteeModal } from './components/CommitteeModal';
 import { SyncSettings } from './components/SyncSettings';
 import { AddEditStaffModal } from './components/AddEditStaffModal';
 import { CampusReferenceHub } from './components/CampusReferenceHub';
+import { CampusLocationMap } from './components/CampusLocationMap';
 import { AdminPinModal } from './components/AdminPinModal';
+import { AdminConsole } from './components/AdminConsole';
 import { 
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
   saveStaffListToFirestore, 
   saveCommitteesToFirestore 
 } from './config/firebase';
+import {
+  QUICK_PORTAL_LINKS,
+  CALENDAR_EVENTS,
+  KEY_CAMPUS_CONTACTS,
+  COLLEGE_RULES,
+  CAMPUS_ANNOUNCEMENTS,
+  ContactItem,
+  LinkItem,
+  CalendarEvent,
+  RuleItem,
+  AnnouncementItem
+} from './data/campusReferenceData';
+
+type MainTabType = 'hub' | 'directory' | 'kampus' | 'akademik' | 'dokumen' | 'makluman' | 'komuniti';
 
 export default function App() {
   // Navigation State
-  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan'>('directory');
+  const [activeTab, setActiveTab] = useState<MainTabType>('hub');
 
   // Staff Directory State
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -57,10 +84,11 @@ export default function App() {
   // Committee State
   const [committees, setCommittees] = useState<StaffCommittee[]>([]);
   const [committeeStaff, setCommitteeStaff] = useState<Staff | null>(null);
+  const [selectedCommitteePeringkat, setSelectedCommitteePeringkat] = useState<string>('Semua');
 
   const fetchCommitteesFromGAS = async (currentStaffList: Staff[]) => {
     try {
-      // Check Firebase Firestore first for persistent committee data
+      // Check persistent committee data first
       const firestoreCommittees = await fetchCommitteesFromFirestore();
       if (firestoreCommittees && firestoreCommittees.length > 0) {
         setCommittees(firestoreCommittees);
@@ -78,7 +106,7 @@ export default function App() {
     } catch (err) {
       console.warn('Committee fetch error:', err);
     }
-    // Fallback default committee generator if empty or unpopulated
+    // Fallback default committee generator if unpopulated
     const defaultComm = generateDefaultCommitteesForStaff(currentStaffList);
     setCommittees(defaultComm);
   };
@@ -98,27 +126,35 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedDivision, setSelectedDivision] = useState<DivisionType>('Semua');
-  const [selectedDepartment, setSelectedDepartment] = useState('Semua');
-
-  // Debounce search input by 250ms for high performance
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 250);
-    return () => clearTimeout(handler);
-  }, [searchQuery]);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('Semua');
   
-  // Admin & Sync States
+  // Admin State
   const [isAdminMode, setIsAdminMode] = useState(false);
-  const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
   const [isAdminPinOpen, setIsAdminPinOpen] = useState(false);
+  const [isAdminConsoleOpen, setIsAdminConsoleOpen] = useState(false);
+  const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
+
+  // Google Sheets Sync Configuration State
+  const [syncConfig, setSyncConfig] = useState<SyncConfig>(() => {
+    const saved = localStorage.getItem('kpmbp_smarthub_gas_config');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return {
+      apiUrl: GAS_CONFIG.webAppUrl,
+      sheetId: GAS_CONFIG.spreadsheetId,
+      scriptId: GAS_CONFIG.scriptId,
+      sheetName: 'StaffList',
+      isConnected: false,
+      lastSyncTime: null
+    };
+  });
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
-  const [isPwaGuideOpen, setIsPwaGuideOpen] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -149,180 +185,140 @@ export default function App() {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
-        setDeferredPrompt(null);
         setIsPwaInstalled(true);
       }
-    } else {
-      setIsPwaGuideOpen(true);
+      setDeferredPrompt(null);
     }
   };
+
+  // Restore Admin Session from SessionStorage on Mount
+  useEffect(() => {
+    try {
+      const savedAdminSession = sessionStorage.getItem('kpmbp_smarthub_admin_session');
+      if (savedAdminSession) {
+        const parsedAdmin = JSON.parse(savedAdminSession);
+        if (parsedAdmin && parsedAdmin.id) {
+          setIsAdminMode(true);
+          setCurrentAdmin(parsedAdmin);
+        }
+      }
+    } catch {
+      // Ignore session restore errors
+    }
+  }, []);
 
   const handleToggleAdminMode = () => {
     if (isAdminMode) {
       setIsAdminMode(false);
       setCurrentAdmin(null);
+      setIsAdminConsoleOpen(false);
+      sessionStorage.removeItem('kpmbp_smarthub_admin_session');
     } else {
       setIsAdminPinOpen(true);
     }
   };
 
-  // Home Trigger: Reset navigation, close modals/drawers/overlays, and reset filters to default
+  const handleOpenAdmin = () => {
+    if (isAdminMode) {
+      setIsAdminConsoleOpen(true);
+    } else {
+      setIsAdminPinOpen(true);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminMode(false);
+    setCurrentAdmin(null);
+    setIsAdminConsoleOpen(false);
+    sessionStorage.removeItem('kpmbp_smarthub_admin_session');
+  };
+
   const handleGoHome = () => {
-    setActiveHub('directory');
-    setSelectedStaff(null);
-    setCommitteeStaff(null);
-    setIsAddEditOpen(false);
-    setEditingStaff(null);
-    setIsSettingsOpen(false);
-    setIsAdminPinOpen(false);
+    setActiveTab('hub');
     setSearchQuery('');
-    setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
     setSelectedDepartment('Semua');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  
-  const DEFAULT_SYNC_CONFIG: SyncConfig = {
-    apiUrl: GAS_CONFIG.webAppUrl,
-    sheetId: GAS_CONFIG.spreadsheetId,
-    scriptId: GAS_CONFIG.scriptId,
-    sheetName: 'Staff',
-    isConnected: true,
-    lastSyncTime: new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }),
-  };
 
-  const [syncConfig, setSyncConfig] = useState<SyncConfig>(DEFAULT_SYNC_CONFIG);
+  // Debounce search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 180);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
-  // Save changes to localstorage and Firebase Firestore
-  const saveStaffList = (updatedList: Staff[]) => {
-    setStaffList(updatedList);
-    localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(updatedList));
-    saveStaffListToFirestore(updatedList).catch((err) => {
-      console.warn('Sync staff to Firebase notice:', err);
-    });
-  };
-
-  const handleSaveConfig = (newConfig: Partial<SyncConfig>) => {
-    const updated = { ...syncConfig, ...newConfig };
-    setSyncConfig(updated);
-    localStorage.setItem('kpmbp_smarthub_config', JSON.stringify(updated));
-  };
-
-  // Sync Action: fetch data from Google Apps Script Web App API or fallbacks
-  const fetchStaffFromGAS = async (isManual = false) => {
-    setIsSyncing(true);
+  // Fetch staff records with remote synchronization
+  const fetchStaffFromGAS = async (isManualSync = false) => {
+    if (isManualSync) setIsSyncing(true);
     setSyncError(null);
-
+    
     try {
-      const rawArray = await fetchStaffDataFromRemote();
-
-      if (!rawArray || rawArray.length === 0) {
-        throw new Error('Tiada rekod staf ditemui daripada Google Apps Script / Google Sheets.');
-      }
-
-      const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
-      const validatedList: Staff[] = rawArray.map((item: any, idx: number) => {
-        const rawId = String(item.staff_id || item.ID || `ST${String(idx + 1).padStart(3, '0')}`).trim();
-        const cleanId = rawId.toUpperCase().replace(/^STF-/i, 'ST').replace(/^STF/i, 'ST');
-        const gradeVal = String(item.grade || item.Gred || STAFF_GRADE_MAP[cleanId] || STAFF_GRADE_MAP[rawId] || '');
-        const jawatanVal = String(item.Jawatan || item.position || 'Pensyarah');
-        const rawBahagian = item.Bahagian || item.division;
-        const bahagianVal = determineBahagian(jawatanVal, rawBahagian);
-
-        return {
-          ID: cleanId,
-          staff_id: cleanId,
-          Bahagian: bahagianVal,
-          DepartmentID: String(item.DepartmentID || item.department || item.Jabatan || 'JTM'),
-          Nama: String(item.Nama || item.name || 'Tiada Nama'),
-          NamaPendek: String(item.NamaPendek || item.short_name || ''),
-          DaerahAsal: String(item.DaerahAsal || item.home_town || ''),
-          TahunLahir: item.TahunLahir ? String(item.TahunLahir) : '',
-          NoPlat: String(item.NoPlat || item.plate_no || ''),
-          Gred: gradeVal,
-          grade: gradeVal,
-          Jawatan: jawatanVal,
-          Kelulusan: String(item.Kelulusan || item.qualification || ''),
-          Pengkhususan: String(item.Pengkhususan || item.specialisation || ''),
-          Telefon: item.Telefon ? String(item.Telefon) : '',
-          WhatsApp: item.WhatsApp ? String(item.WhatsApp) : '',
-          Sambungan: item.Sambungan ? String(item.Sambungan) : '',
-          Email: String(item.Email || item.email || ''),
-          'URL Profil': String(item['URL Profil'] || item.profile_url || ''),
-          Sumber: 'Google Apps Script / Sheets',
-          Status: String(item.Status || item.status || 'Aktif'),
-          LastSync: nowTimestamp,
-        };
-      });
-
-      // Replace current local staff dataset and sync to Firebase
-      saveStaffList(validatedList);
-
-      // Update active profile modal if open
-      if (selectedStaff) {
-        const updatedSelected = validatedList.find((s) => s.ID === selectedStaff.ID || s.staff_id === selectedStaff.staff_id);
-        if (updatedSelected) {
-          setSelectedStaff(updatedSelected);
-        }
-      }
-
-      const syncTime = new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' });
-      handleSaveConfig({
-        isConnected: true,
-        lastSyncTime: syncTime,
-        apiUrl: GAS_CONFIG.webAppUrl,
-        sheetId: GAS_CONFIG.spreadsheetId,
-        scriptId: GAS_CONFIG.scriptId,
-      });
-
-      console.log(`Data Source:\nGoogle Apps Script / Sheets\n\nRecords Loaded:\n${validatedList.length}\n\nLast Sync:\n${nowTimestamp}`);
-
-      if (isManual) {
-        alert(`Penyamaan Berjaya!\nDikemaskini ${validatedList.length} rekod staf.`);
+      const data = await fetchStaffDataFromRemote();
+      if (Array.isArray(data) && data.length > 0) {
+        const enriched = data.map((s) => {
+          const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
+          const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
+          return {
+            ...s,
+            Bahagian: b,
+            Gred: g,
+            grade: g,
+          };
+        });
+        setStaffList(enriched);
+        saveStaffList(enriched);
+        
+        const now = new Date().toLocaleString('ms-MY', { 
+          day: 'numeric', month: 'short', year: 'numeric', 
+          hour: '2-digit', minute: '2-digit' 
+        });
+        const newConfig = { ...syncConfig, isConnected: true, lastSyncTime: now };
+        setSyncConfig(newConfig);
+        localStorage.setItem('kpmbp_smarthub_gas_config', JSON.stringify(newConfig));
+      } else {
+        throw new Error('Format respon tidak mengandungi senarai staf yang sah');
       }
     } catch (err: any) {
-      console.error('GAS Fetch Error:', err);
-      const errMsg = err.message || 'Ralat menyambung ke Google Apps Script / Google Sheets';
-      setSyncError(errMsg);
-      if (isManual) {
-        alert(`Penyamaan Gagal: ${errMsg}`);
-      }
+      setSyncError(err.message || 'Penyelarasan sedang dikemas kini.');
     } finally {
-      setIsSyncing(false);
+      if (isManualSync) setIsSyncing(false);
     }
   };
 
-  const handleSyncNow = async () => {
-    await fetchStaffFromGAS(true);
+  // Save changes to storage and persistent store
+  const saveStaffList = (updatedList: Staff[]) => {
+    setStaffList(updatedList);
+    try {
+      localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(updatedList));
+      saveStaffListToFirestore(updatedList).catch((err) => {
+        console.warn('Penyimpanan luar talian aktif:', err);
+      });
+    } catch (e) {
+      console.error('Ralat menyimpan maklumat staf:', e);
+    }
   };
 
-  // Load staff & config on mount directly from Google Apps Script
+  // Save sync config
+  const handleSaveConfig = (newConfig: SyncConfig) => {
+    setSyncConfig(newConfig);
+    localStorage.setItem('kpmbp_smarthub_gas_config', JSON.stringify(newConfig));
+  };
+
+  // Sync now
+  const handleSyncNow = () => {
+    fetchStaffFromGAS(true);
+  };
+
+  // Initial load: local storage or initial dataset, then verify with remote store
   useEffect(() => {
-    const cachedConfig = localStorage.getItem('kpmbp_smarthub_config');
-    if (cachedConfig) {
-      try {
-        const parsed = JSON.parse(cachedConfig);
-        setSyncConfig({
-          ...DEFAULT_SYNC_CONFIG,
-          ...parsed,
-          sheetId: GAS_CONFIG.spreadsheetId,
-          scriptId: GAS_CONFIG.scriptId,
-          apiUrl: GAS_CONFIG.webAppUrl,
-        });
-      } catch (e) {
-        setSyncConfig(DEFAULT_SYNC_CONFIG);
-      }
-    } else {
-      localStorage.setItem('kpmbp_smarthub_config', JSON.stringify(DEFAULT_SYNC_CONFIG));
-    }
-
     const cachedStaff = localStorage.getItem('kpmbp_smarthub_staff');
     if (cachedStaff) {
       try {
-        const parsedList: Staff[] = JSON.parse(cachedStaff);
-        if (parsedList && parsedList.length >= 70) {
-          const enriched = parsedList.map((s) => {
+        const parsed = JSON.parse(cachedStaff);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const enriched = parsed.map((s: Staff) => {
             const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
             const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
             return {
@@ -336,7 +332,6 @@ export default function App() {
         } else {
           setStaffList(INITIAL_STAFF_DATA);
           localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(INITIAL_STAFF_DATA));
-          saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
         }
       } catch (e) {
         setStaffList(INITIAL_STAFF_DATA);
@@ -344,10 +339,9 @@ export default function App() {
     } else {
       setStaffList(INITIAL_STAFF_DATA);
       localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(INITIAL_STAFF_DATA));
-      saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
     }
 
-    // Prioritize loading stored records from Firebase Firestore
+    // Check stored records asynchronously
     fetchStaffListFromFirestore().then((fbStaff) => {
       if (fbStaff && fbStaff.length >= 70) {
         const enriched = fbStaff.map((s) => {
@@ -362,7 +356,7 @@ export default function App() {
         });
         setStaffList(enriched);
         localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(enriched));
-      } else {
+      } else if (!cachedStaff || fbStaff.length === 0) {
         saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
       }
     }).catch(() => {});
@@ -384,12 +378,9 @@ export default function App() {
     saveStaffList(updated);
   };
 
-  const handleDeleteStaff = (id: string) => {
-    const updated = staffList.filter((s) => s.ID !== id);
+  const handleDeleteStaff = (staffId: string) => {
+    const updated = staffList.filter((s) => s.ID !== staffId);
     saveStaffList(updated);
-    if (selectedStaff?.ID === id) {
-      setSelectedStaff(null);
-    }
   };
 
   const handleAddNewStaff = () => {
@@ -397,91 +388,84 @@ export default function App() {
     setIsAddEditOpen(true);
   };
 
-  const handleResetStaffData = () => {
-    saveStaffList(INITIAL_STAFF_DATA);
-  };
-
   const handleImportCommitteeData = (importedCommittees: StaffCommittee[]) => {
     setCommittees(importedCommittees);
     localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(importedCommittees));
     saveCommitteesToFirestore(importedCommittees).catch((err) => {
-      console.warn('Sync committees to Firebase notice:', err);
+      console.warn('Penyimpanan jawatankuasa luar talian:', err);
     });
   };
 
-  const handleResetCommitteeData = () => {
-    localStorage.removeItem('kpmbp_smarthub_committees');
-    fetchCommitteesFromGAS(staffList);
+  const handleResetStaffData = () => {
+    setStaffList(INITIAL_STAFF_DATA);
+    localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(INITIAL_STAFF_DATA));
+    saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
   };
 
-  // Build pre-computed searchable index on staff dataset load/change
+  const handleResetCommitteeData = () => {
+    const defaultComm = generateDefaultCommitteesForStaff(staffList);
+    setCommittees(defaultComm);
+    localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(defaultComm));
+    saveCommitteesToFirestore(defaultComm).catch(() => {});
+  };
+
+  // Get unique departments for filter dropdown
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Set<string>();
+    staffList.forEach((s) => {
+      if (s.DepartmentID && s.DepartmentID.trim()) {
+        depts.add(s.DepartmentID.trim());
+      }
+    });
+    return ['Semua', ...Array.from(depts).sort()];
+  }, [staffList]);
+
+  // Precompute searchable terms for fast indexed search
   const indexedStaffList = useMemo(() => {
     return staffList.map((staff) => {
-      const district = String(staff.DaerahAsal || '');
-      const state = getDistrictState(district);
+      const stateName = getDistrictState(staff.DaerahAsal || '');
+      const searchableParts = [
+        staff.Nama || '',
+        staff.ID || '',
+        staff.staff_id || '',
+        staff.Jawatan || '',
+        staff.Bahagian || '',
+        staff.DepartmentID || '',
+        staff.Unit || '',
+        staff.Sambungan || '',
+        staff.Gred || staff.grade || '',
+        staff.Email || '',
+        staff.NoBilik || '',
+        staff.Kelulusan || '',
+        staff.Pengkhususan || '',
+        stateName
+      ];
 
-      // Collect all vehicle plates: PlatNo1, PlatNo2, PlatNo3, PlatMotor1, PlatMotor2, NoPlat
-      const allPlates = [
-        staff.PlatNo1,
-        staff.PlatNo2,
-        staff.PlatNo3,
-        staff.PlatMotor1,
-        staff.PlatMotor2,
-        staff.NoPlat,
-      ].filter(Boolean) as string[];
-
-      const platesNormalized = allPlates.map((p) => String(p).toLowerCase().trim());
-      const platesNoSpace = allPlates.map((p) => String(p).toLowerCase().replace(/\s+/g, ''));
-
-      // Combine all searchable staff fields into a single normalized index text
-      const searchableText = [
-        staff.Nama,
-        staff.NamaPendek,
-        staff.ID,
-        staff.staff_id,
-        staff.Jawatan,
-        staff.Gred,
-        staff.grade,
-        staff.DepartmentID,
-        staff.Bahagian,
-        staff.Email,
-        staff.Telefon,
-        staff.Sambungan,
-        staff.WhatsApp,
-        ...platesNormalized,
-        ...platesNoSpace,
-        staff.TahunLahir,
-        staff['Tahun Lahir'],
-        district,
-        state,
-        staff.Kelulusan,
-        staff.Pengkhususan,
-        staff.Sumber,
-      ]
-        .filter(Boolean)
-        .map((val) => String(val).toLowerCase().trim())
-        .join(' ');
+      const searchableText = searchableParts.join(' ').toLowerCase().replace(/\s+/g, '');
+      const platesNoSpace = [
+        (staff.NoPlat || '').toLowerCase().replace(/\s+/g, ''),
+        (staff.PlatNo1 || '').toLowerCase().replace(/\s+/g, ''),
+        (staff.PlatNo2 || '').toLowerCase().replace(/\s+/g, ''),
+        (staff.PlatNo3 || '').toLowerCase().replace(/\s+/g, ''),
+        (staff.PlatMotor1 || '').toLowerCase().replace(/\s+/g, ''),
+        (staff.PlatMotor2 || '').toLowerCase().replace(/\s+/g, '')
+      ].filter(Boolean);
 
       return {
         staff,
         searchableText,
-        platesNoSpace,
+        platesNoSpace
       };
     });
   }, [staffList]);
 
-  // Filters calculation using pre-computed index & debounced search query
-  const uniqueDepartments = ['Semua', ...Array.from(new Set(staffList.map((s) => s.DepartmentID)))];
-
+  // Filtered staff list
   const filteredStaff = useMemo(() => {
-    const q = debouncedSearchQuery.toLowerCase().trim();
-    const qNoSpace = q.replace(/\s+/g, '');
-
     return indexedStaffList
       .filter(({ staff, searchableText, platesNoSpace }) => {
-        if (q) {
+        if (debouncedSearchQuery) {
+          const qNoSpace = debouncedSearchQuery.toLowerCase().replace(/\s+/g, '');
           const matchesQuery =
-            searchableText.includes(q) ||
             searchableText.includes(qNoSpace) ||
             platesNoSpace.some((plate) => plate.includes(qNoSpace));
           if (!matchesQuery) return false;
@@ -500,6 +484,74 @@ export default function App() {
       .map((item) => item.staff);
   }, [indexedStaffList, debouncedSearchQuery, selectedDivision, selectedDepartment]);
 
+  // Smart Search Multi-Category Matcher
+  const smartSearchResults = useMemo(() => {
+    if (!debouncedSearchQuery.trim()) {
+      return {
+        hasQuery: false,
+        staff: [],
+        contacts: [],
+        portals: [],
+        calendar: [],
+        rules: [],
+        committees: []
+      };
+    }
+
+    const q = debouncedSearchQuery.toLowerCase().trim();
+
+    const matchedContacts = KEY_CAMPUS_CONTACTS.filter(c => 
+      c.department.toLowerCase().includes(q) ||
+      c.role.toLowerCase().includes(q) ||
+      c.phone.includes(q) ||
+      (c.extension && c.extension.includes(q)) ||
+      (c.email && c.email.toLowerCase().includes(q))
+    );
+
+    const matchedPortals = QUICK_PORTAL_LINKS.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.desc.toLowerCase().includes(q) ||
+      p.audience.toLowerCase().includes(q)
+    );
+
+    const matchedCalendar = CALENDAR_EVENTS.filter(e =>
+      e.title.toLowerCase().includes(q) ||
+      e.dateRange.toLowerCase().includes(q) ||
+      e.type.toLowerCase().includes(q)
+    );
+
+    const matchedRules = COLLEGE_RULES.filter(r =>
+      r.title.toLowerCase().includes(q) ||
+      r.desc.toLowerCase().includes(q) ||
+      r.details.some(d => d.toLowerCase().includes(q))
+    );
+
+    const matchedCommittees = committees.filter(c =>
+      c.jawatankuasa.toLowerCase().includes(q) ||
+      c.peranan.toLowerCase().includes(q) ||
+      (c.staff_nama && c.staff_nama.toLowerCase().includes(q)) ||
+      (c.peringkat && c.peringkat.toLowerCase().includes(q))
+    ).slice(0, 8);
+
+    return {
+      hasQuery: true,
+      staff: filteredStaff,
+      contacts: matchedContacts,
+      portals: matchedPortals,
+      calendar: matchedCalendar,
+      rules: matchedRules,
+      committees: matchedCommittees
+    };
+  }, [debouncedSearchQuery, filteredStaff, committees]);
+
+  const totalResultsCount = 
+    smartSearchResults.staff.length +
+    smartSearchResults.contacts.length +
+    smartSearchResults.portals.length +
+    smartSearchResults.calendar.length +
+    smartSearchResults.rules.length +
+    smartSearchResults.committees.length;
+
   const resetFilters = () => {
     setSearchQuery('');
     setSelectedDivision('Semua');
@@ -511,344 +563,1036 @@ export default function App() {
   const supportStaff = staffList.filter(s => s.Bahagian !== 'Akademik').length;
   const academicStaff = staffList.filter(s => s.Bahagian === 'Akademik').length;
 
+  // Filtered committees by peringkat
+  const filteredCommittees = useMemo(() => {
+    if (selectedCommitteePeringkat === 'Semua') return committees;
+    return committees.filter(c => c.peringkat === selectedCommitteePeringkat);
+  }, [committees, selectedCommitteePeringkat]);
+
+  // Unique committee peringkat
+  const committeePeringkats = useMemo(() => {
+    const set = new Set<string>();
+    committees.forEach(c => {
+      if (c.peringkat && c.peringkat.trim()) set.add(c.peringkat.trim());
+    });
+    return ['Semua', ...Array.from(set).sort()];
+  }, [committees]);
+
+  // Render Dedicated Admin Console when active
+  if (isAdminConsoleOpen) {
+    return (
+      <>
+        <AdminConsole
+          currentAdmin={currentAdmin}
+          onClose={() => setIsAdminConsoleOpen(false)}
+          onLogout={handleAdminLogout}
+          staffList={staffList}
+          onAddNewStaff={handleAddNewStaff}
+          onEditStaff={(stf) => {
+            setEditingStaff(stf);
+            setIsAddEditOpen(true);
+          }}
+          onDeleteStaff={handleDeleteStaff}
+          committeeList={committees}
+          config={syncConfig}
+          onSaveConfig={handleSaveConfig}
+          onSyncNow={handleSyncNow}
+          isSyncing={isSyncing}
+          onImportStaffData={(imported) => saveStaffList(imported)}
+          onImportCommitteeData={handleImportCommitteeData}
+          onResetStaffData={handleResetStaffData}
+          onResetCommitteeData={handleResetCommitteeData}
+          onInstallPWA={handleInstallPWA}
+          canInstallPWA={!isPwaInstalled}
+        />
+
+        <AddEditStaffModal
+          staff={editingStaff}
+          isOpen={isAddEditOpen}
+          onClose={() => {
+            setIsAddEditOpen(false);
+            setEditingStaff(null);
+          }}
+          onSave={handleSaveStaff}
+          onDelete={handleDeleteStaff}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen text-gray-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
       
-      {/* Dynamic Ambient Background Blobs */}
+      {/* Ambient Visual Background Elements */}
       <div className="mesh-blob blob-1"></div>
       <div className="mesh-blob blob-2"></div>
       <div className="mesh-blob blob-3"></div>
 
       {/* Primary Glassmorphic Header */}
-      <header className="glass-panel sticky top-0 z-40 px-6 py-4 border-b border-white/40 shadow-xs backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <header className="glass-panel sticky top-0 z-40 px-4 md:px-6 py-3.5 border-b border-white/50 shadow-xs backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-3.5">
           
-          {/* Logo & Platform Info with Official KPMBP SmartHub Logo (Home Trigger) */}
+          {/* Logo & Platform Info with Official KPMBP SmartHub Branding */}
           <button
             type="button"
             onClick={handleGoHome}
-            title="Kembali ke Halaman Utama (Home)"
-            aria-label="Kembali ke Halaman Utama DIRECTORY KPMBP"
-            className="flex items-center gap-3.5 text-left cursor-pointer group focus:outline-hidden transition-opacity hover:opacity-90 active:scale-[0.99]"
+            title="Kembali ke Halaman Utama KPMBP SmartHub"
+            aria-label="KPMBP SmartHub — Pusat Rujukan Maklumat Warga KPMBP"
+            className="flex items-center gap-3.5 text-left cursor-pointer group focus:outline-hidden transition-opacity hover:opacity-95 active:scale-[0.99]"
           >
             <img
               src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/KPMBPSmartHub/favicon.svg"
-              alt="Logo DIRECTORY KPMBP"
-              className="w-11 h-11 object-contain drop-shadow-sm rounded-xl shrink-0"
+              alt="Logo KPMBP SmartHub"
+              className="w-11 h-11 object-contain drop-shadow-sm rounded-xl shrink-0 group-hover:scale-105 transition-transform"
               referrerPolicy="no-referrer"
             />
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-sans font-extrabold text-gray-950 text-lg md:text-xl tracking-tight leading-tight">
-                  DIRECTORY <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 bg-clip-text text-transparent">KPMBP</span>
+                <h1 className="font-sans font-black text-gray-950 text-lg md:text-xl tracking-tight leading-tight">
+                  KPMBP <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 bg-clip-text text-transparent">SmartHub</span>
                 </h1>
               </div>
-              <p className="text-[11px] text-gray-500 font-medium tracking-wide">Kolej Profesional MARA Bandar Penawar</p>
+              <p className="text-[11px] text-slate-500 font-bold tracking-wide">Pusat Rujukan Maklumat Warga KPMBP</p>
             </div>
           </button>
 
-          {/* Dynamic Campus Center Control Deck */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Quick Admin Mode Toggle Button */}
-            <button
-              onClick={handleToggleAdminMode}
-              title={isAdminMode ? 'Matikan Admin Mode' : 'Aktifkan Admin Mode (Emel MARA / Master PIN)'}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-extrabold transition-all border cursor-pointer ${
-                isAdminMode
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-200'
-                  : 'bg-white/80 hover:bg-white text-slate-700 hover:text-indigo-600 border-slate-200/80 shadow-2xs'
-              }`}
-            >
-              {isAdminMode ? (
-                <>
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span className="max-w-[140px] truncate">{currentAdmin?.name ? `Admin: ${currentAdmin.name}` : 'Admin Mode Aktif'}</span>
-                </>
-              ) : (
-                <>
-                  <Lock className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Admin Mode</span>
-                </>
-              )}
-            </button>
+          {/* Public Navigation Items */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+            <div className="flex items-center gap-1 p-1 bg-slate-100/80 backdrop-blur-md rounded-2xl border border-slate-200/60 shadow-2xs">
+              <button
+                onClick={() => setActiveTab('hub')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'hub'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/50'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Utama</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('directory')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'directory'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/50'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Direktori Staf</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('kampus')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'kampus'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/50'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Kampus</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('akademik')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'akademik'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/50'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Akademik</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('dokumen')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'dokumen'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/50'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5 text-amber-600" />
+                <span>Dokumen</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('makluman')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'makluman'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/50'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Bell className="w-3.5 h-3.5 text-rose-500" />
+                <span>Makluman</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('komuniti')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'komuniti'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/50'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-purple-600" />
+                <span>Komuniti & JK</span>
+              </button>
+            </div>
 
-            {/* Single Consolidated Database Settings Button - Icon Only */}
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              title="Pengurusan Admin & Database"
-              aria-label="Pengurusan Admin & Database"
-              className={`relative p-2 rounded-2xl transition-all border cursor-pointer flex items-center justify-center ${
-                isSettingsOpen 
-                  ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200' 
-                  : 'bg-white/80 text-slate-700 hover:text-indigo-600 border-slate-200/80 hover:bg-white shadow-2xs'
-              }`}
-            >
-              <Settings className={`w-5 h-5 transition-transform duration-300 hover:rotate-90 ${isSettingsOpen ? 'text-white' : 'text-indigo-600'}`} />
-            </button>
+            {/* PWA App Install Button */}
+            {!isPwaInstalled && (
+              <button
+                onClick={handleInstallPWA}
+                title="Pasang aplikasi KPMBP SmartHub"
+                className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 bg-white/80 hover:bg-white text-slate-700 hover:text-indigo-600 rounded-xl text-xs font-bold border border-slate-200/70 shadow-2xs transition-all cursor-pointer shrink-0"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Pasang App</span>
+              </button>
+            )}
+
+            {/* Active Admin Pill */}
+            {isAdminMode && (
+              <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 shrink-0">
+                <button
+                  onClick={() => setIsAdminConsoleOpen(true)}
+                  title="Buka Admin Console"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-black border border-amber-300 transition-colors cursor-pointer"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Admin Console</span>
+                </button>
+                <button
+                  onClick={handleAdminLogout}
+                  title="Tamat Mod Admin"
+                  className="px-2 py-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  Keluar
+                </button>
+              </div>
+            )}
           </div>
 
         </div>
       </header>
 
-      {/* Sub-Header Tab Switcher */}
-      <div className="border-b border-slate-100/80 bg-white/40 backdrop-blur-md relative z-30">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-start gap-2">
-          <button
-            onClick={() => setActiveHub('directory')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              activeHub === 'directory'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                : 'bg-white/60 text-slate-700 hover:bg-white/80 border border-slate-100'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            Rujukan Staff
-          </button>
-          <button
-            onClick={() => setActiveHub('rujukan')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              activeHub === 'rujukan'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                : 'bg-white/60 text-slate-700 hover:bg-white/80 border border-slate-100'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
-            Rujukan Pelajar
-          </button>
-        </div>
-      </div>
-
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6 relative z-10">
+        
+        {/* Penyelarasan Maklumat Banner (Non-technical fallback notification) */}
         {syncError && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-800 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-2xs text-left">
+          <div className="bg-amber-50/90 border border-amber-200 text-amber-900 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-2xs text-left">
             <div className="flex items-center gap-3">
-              <ShieldAlert className="w-5 h-5 text-red-600 shrink-0" />
+              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
               <div>
-                <p className="font-extrabold text-xs uppercase tracking-wide text-red-900">Ralat Sambungan Google Apps Script</p>
-                <p className="text-xs text-red-700 mt-0.5">{syncError}</p>
+                <p className="font-extrabold text-xs uppercase tracking-wide text-amber-950">Pusat Rujukan Maklumat KPMBP</p>
+                <p className="text-xs text-amber-800 mt-0.5">Memaparkan maklumat daripada arkib rasmi kolej.</p>
               </div>
             </div>
             <button
               onClick={() => fetchStaffFromGAS(true)}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
             >
-              Cuba Lagi
+              Muat Semula
             </button>
           </div>
         )}
 
-        {activeHub === 'directory' ? (
-          <div className="space-y-6">
+        {/* =========================================================================
+            SECTION 1: SMART SEARCH BAR (Always present and most prominent interaction)
+           ========================================================================= */}
+        <section className="glass-panel rounded-3xl p-5 md:p-7 border border-white/60 shadow-xs relative overflow-hidden bg-gradient-to-br from-white/95 via-indigo-50/30 to-white/90 text-left">
+          <div className="max-w-4xl mx-auto space-y-4">
             
-            {/* Unified Search & Directory Control Bar */}
-            <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/55 shadow-sm space-y-4 text-left">
-              
-              {/* Row 1: Search Box & Jabatan Selector */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                
-                {/* Prominent Search Bar */}
-                <div className="relative flex-1">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500 w-4 h-4 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama, no. plat (cth: SYM2539), gred, jabatan..."
-                    className="w-full pl-11 pr-10 py-3 bg-white/90 border border-indigo-200/80 rounded-2xl text-xs md:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all shadow-2xs"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full transition-all cursor-pointer"
-                      title="Padam carian"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Jabatan Selector */}
-                <div className="relative min-w-[200px]">
-                  <select
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 bg-white/90 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none appearance-none cursor-pointer shadow-2xs"
-                  >
-                    <option value="Semua">Semua Bahagian</option>
-                    {uniqueDepartments.filter(d => d !== 'Semua').map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-500">
-                    <Filter className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-
-                {/* Reset Filters button */}
-                {(searchQuery || selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
-                  <button
-                    onClick={resetFilters}
-                    className="px-3.5 py-3 text-xs text-indigo-700 hover:text-indigo-950 font-bold flex items-center justify-center gap-1.5 bg-indigo-50/80 hover:bg-indigo-100/80 rounded-2xl border border-indigo-200/80 transition-all cursor-pointer whitespace-nowrap shadow-2xs"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Set Semula</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Row 2: Horizonal Division (Bahagian) Filter Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-t border-slate-100/80 pt-3">
-                {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[]).map((div) => {
-                  const isActive = selectedDivision === div;
-                  const count = div === 'Semua' 
-                    ? staffList.length 
-                    : staffList.filter(s => s.Bahagian === div).length;
-
-                  let pastelStyle = '';
-                  let badgeStyle = '';
-
-                  if (div === 'Semua') {
-                    pastelStyle = isActive
-                      ? 'bg-rose-100/95 text-rose-950 border-2 border-rose-400 shadow-xs font-black'
-                      : 'bg-rose-50/80 text-rose-900 hover:bg-rose-100/70 border border-rose-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-rose-200 text-rose-950' : 'bg-rose-100 text-rose-900';
-                  } else if (div === 'Pengurusan') {
-                    pastelStyle = isActive
-                      ? 'bg-purple-100/95 text-purple-950 border-2 border-purple-400 shadow-xs font-black'
-                      : 'bg-purple-50/80 text-purple-900 hover:bg-purple-100/70 border border-purple-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-purple-200 text-purple-950' : 'bg-purple-100 text-purple-900';
-                  } else if (div === 'Akademik') {
-                    pastelStyle = isActive
-                      ? 'bg-amber-100/95 text-amber-950 border-2 border-amber-400 shadow-xs font-black'
-                      : 'bg-amber-50/80 text-amber-900 hover:bg-amber-100/70 border border-amber-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-amber-200 text-amber-950' : 'bg-amber-100 text-amber-900';
-                  } else if (div === 'Sokongan Akademik') {
-                    pastelStyle = isActive
-                      ? 'bg-sky-100/95 text-sky-950 border-2 border-sky-400 shadow-xs font-black'
-                      : 'bg-sky-50/80 text-sky-900 hover:bg-sky-100/70 border border-sky-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-sky-200 text-sky-950' : 'bg-sky-100 text-sky-900';
-                  } else if (div === 'Pentadbiran') {
-                    pastelStyle = isActive
-                      ? 'bg-emerald-100/95 text-emerald-950 border-2 border-emerald-400 shadow-xs font-black'
-                      : 'bg-emerald-50/80 text-emerald-900 hover:bg-emerald-100/70 border border-emerald-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-emerald-200 text-emerald-950' : 'bg-emerald-100 text-emerald-900';
-                  }
-
-                  return (
-                    <button
-                      key={div}
-                      onClick={() => setSelectedDivision(div)}
-                      className={`px-4 py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer ${pastelStyle}`}
-                    >
-                      <span>{div}</span>
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${badgeStyle}`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-            </div>
-
-            {/* Active Admin Mode Notification Banner */}
-            {isAdminMode && (
-              <div className="p-4 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-950 shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-extrabold text-amber-950">Mod Suntingan Admin Aktif</h4>
-                    <p className="text-[11px] text-amber-800 font-medium">
-                      Klik ikon pensel/padam pada mana-mana kad staf untuk kemaskini atau hapus rekod secara terus.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleAddNewStaff}
-                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>+ Daftarkan Staf</span>
-                  </button>
-                  <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="px-3 py-1.5 bg-white border border-amber-200 text-amber-900 hover:bg-amber-100/60 rounded-xl text-xs font-extrabold transition-all cursor-pointer"
-                  >
-                    Tetapan Admin
-                  </button>
-                </div>
-              </div>
-            )}
-
-          {/* Staff Grid Header with Add Staff button */}
-          <div className="flex items-center justify-between px-2 pt-2 text-left">
             <div>
-              <h2 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                Senarai Kakitangan & Pensyarah ({filteredStaff.length})
+              <h2 className="text-xl md:text-3xl font-black text-slate-900 tracking-tight leading-tight">
+                Pusat Rujukan Maklumat Warga KPMBP
               </h2>
             </div>
-            {isAdminMode && (
-              <button
-                onClick={() => {
-                  setEditingStaff(null);
-                  setIsAddEditOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-4.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold transition-all shadow-md shadow-indigo-200 cursor-pointer active:scale-95"
-              >
-                <UserPlus className="w-4 h-4" /> Daftarkan Staf Baru
-              </button>
-            )}
-          </div>
 
-          {/* Staff Cards Grid */}
-          {filteredStaff.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
-              {filteredStaff.map((staff) => (
-                <div key={staff.ID} className="relative">
-                  <StaffCard
-                    staff={staff}
-                    onClick={(stf) => setSelectedStaff(stf)}
-                    isAdminMode={isAdminMode}
-                    onEdit={(stf) => {
-                      setEditingStaff(stf);
-                      setIsAddEditOpen(true);
-                    }}
-                    onOpenCommittee={(stf) => setCommitteeStaff(stf)}
-                  />
-                </div>
-              ))}
+            {/* Prominent Smart Search Input */}
+            <div className="relative">
+              <Search className="absolute left-4.5 top-1/2 -translate-y-1/2 text-indigo-600 w-5 h-5 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔎 Cari maklumat KPMBP (nama staf, jawatan, no. sambungan, portal, warden, takwim, jadual, gred)..."
+                className="w-full pl-12 pr-11 py-3.5 md:py-4 bg-white border-2 border-indigo-200/80 rounded-2xl text-xs md:text-base font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-600 focus:outline-hidden transition-all shadow-sm"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full transition-all cursor-pointer"
+                  title="Padam carian"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-          ) : (
-            /* Empty State */
-            <div className="glass-panel rounded-3xl p-12 text-center max-w-md mx-auto space-y-4 border border-slate-100 shadow-sm bg-white/50">
-              <div className="w-16 h-16 bg-white border border-slate-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 shadow-sm">
-                <Search className="w-6 h-6" />
+
+            {/* Quick Access Pills (Rujukan Pantas) */}
+            <div className="pt-1">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+                <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                  <Bookmark className="w-3 h-3 text-indigo-500" />
+                  Rujukan Pantas:
+                </span>
+                
+                <button
+                  onClick={() => { setActiveTab('directory'); resetFilters(); }}
+                  className="px-3 py-1 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded-xl font-bold border border-slate-200/80 shadow-2xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-3 h-3 text-indigo-600" />
+                  <span>Direktori Staf</span>
+                </button>
+
+                <button
+                  onClick={() => { setActiveTab('akademik'); }}
+                  className="px-3 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 rounded-xl font-bold border border-slate-200/80 shadow-2xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Calendar className="w-3 h-3 text-emerald-600" />
+                  <span>Kalendar Akademik</span>
+                </button>
+
+                <button
+                  onClick={() => { setActiveTab('directory'); setSearchQuery('jadual'); }}
+                  className="px-3 py-1 bg-white hover:bg-purple-50 text-slate-700 hover:text-purple-700 rounded-xl font-bold border border-slate-200/80 shadow-2xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Clock className="w-3 h-3 text-purple-600" />
+                  <span>Jadual Waktu</span>
+                </button>
+
+                <button
+                  onClick={() => { setActiveTab('kampus'); }}
+                  className="px-3 py-1 bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 rounded-xl font-bold border border-slate-200/80 shadow-2xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <PhoneCall className="w-3 h-3 text-rose-600" />
+                  <span>Direktori Telefon</span>
+                </button>
+
+                <button
+                  onClick={() => { setActiveTab('akademik'); }}
+                  className="px-3 py-1 bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-700 rounded-xl font-bold border border-slate-200/80 shadow-2xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3 h-3 text-amber-600" />
+                  <span>Portal Akademik (SPMP)</span>
+                </button>
+
+                <button
+                  onClick={() => { setActiveTab('kampus'); }}
+                  className="px-3 py-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-xl font-bold border border-slate-200/80 shadow-2xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Shield className="w-3 h-3 text-blue-600" />
+                  <span>Warden Asrama</span>
+                </button>
               </div>
-              <div className="space-y-1">
-                <h3 className="font-extrabold text-slate-900 text-base">No matching staff found.</h3>
-                <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                  Sila cuba lagi dengan kata kunci yang berbeza.
+            </div>
+
+          </div>
+        </section>
+
+        {/* =========================================================================
+            SEARCH RESULTS VIEW (When query is active, display aggregated matches)
+           ========================================================================= */}
+        {smartSearchResults.hasQuery ? (
+          <div className="space-y-6 text-left">
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                  Hasil Carian untuk "{debouncedSearchQuery}" ({totalResultsCount})
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  Carian pintar merangkumi direktori staf, portal, takwim, kontak kampus, panduan dan jawatankuasa.
                 </p>
               </div>
               <button
-                onClick={resetFilters}
-                className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all cursor-pointer"
+                onClick={() => setSearchQuery('')}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
               >
-                Kosongkan Saringan
+                <X className="w-3.5 h-3.5" />
+                <span>Kosongkan Carian</span>
               </button>
             </div>
-          )}
 
+            {totalResultsCount === 0 ? (
+              /* Global Empty State */
+              <div className="glass-panel rounded-3xl p-12 text-center max-w-md mx-auto space-y-4 border border-slate-200 shadow-sm bg-white/70">
+                <div className="w-16 h-16 bg-white border border-slate-200 rounded-2xl flex items-center justify-center mx-auto text-indigo-600 shadow-2xs">
+                  <Search className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-black text-slate-900 text-base">Tiada maklumat tersedia buat masa ini.</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+                    Tiada padanan ditemui untuk "{debouncedSearchQuery}". Sila cuba nama staf, jawatan, atau kata kunci lain.
+                  </p>
+                </div>
+                <button
+                  onClick={resetFilters}
+                  className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer"
+                >
+                  Padam Saringan
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                
+                {/* 1. Staff Matches */}
+                {smartSearchResults.staff.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                        <UserCheck className="w-4 h-4 text-indigo-600" />
+                        Kakitangan & Pensyarah ({smartSearchResults.staff.length})
+                      </h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
+                      {smartSearchResults.staff.map((staff) => (
+                        <StaffCard
+                          key={staff.ID}
+                          staff={staff}
+                          onClick={(stf) => setSelectedStaff(stf)}
+                          isAdminMode={false}
+                          onEdit={() => {}}
+                          onOpenCommittee={(stf) => setCommitteeStaff(stf)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Campus Contacts & Warden Matches */}
+                {smartSearchResults.contacts.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <PhoneCall className="w-4 h-4 text-rose-600" />
+                      Talian Bantuan Kampus & Warden ({smartSearchResults.contacts.length})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {smartSearchResults.contacts.map((contact) => (
+                        <div key={contact.id} className="p-4 glass-card rounded-2xl border border-white/60 shadow-2xs space-y-2">
+                          <h5 className="font-black text-slate-900 text-xs">{contact.department}</h5>
+                          <p className="text-[11px] text-slate-500 font-semibold">{contact.role}</p>
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                            <span>{contact.phone}</span>
+                            {contact.extension && (
+                              <span className="font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                ({contact.extension})
+                              </span>
+                            )}
+                          </div>
+                          <div className="pt-2 flex gap-2">
+                            <a
+                              href={`tel:${contact.phone}`}
+                              className="py-1 px-3 bg-white hover:bg-slate-50 text-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 flex items-center gap-1 shadow-2xs"
+                            >
+                              <PhoneCall className="w-3 h-3 text-indigo-600" /> Hubungi
+                            </a>
+                            <a
+                              href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="py-1 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded-lg border border-emerald-200 flex items-center gap-1 shadow-2xs"
+                            >
+                              <MessageCircle className="w-3 h-3 text-emerald-600" /> WhatsApp
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Portals Matches */}
+                {smartSearchResults.portals.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <ExternalLink className="w-4 h-4 text-purple-600" />
+                      Portal Akademik & Sistem Rasmi ({smartSearchResults.portals.length})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {smartSearchResults.portals.map((portal) => (
+                        <div key={portal.id} className="p-4 glass-card rounded-2xl border border-white/60 shadow-2xs flex items-center justify-between gap-3">
+                          <div>
+                            <h5 className="font-black text-slate-900 text-xs">{portal.title}</h5>
+                            <p className="text-[11px] text-slate-500 font-medium line-clamp-1">{portal.desc}</p>
+                          </div>
+                          <a
+                            href={portal.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 shadow-2xs"
+                          >
+                            <span>Buka</span> <ChevronRight className="w-3 h-3" />
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Calendar Matches */}
+                {smartSearchResults.calendar.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-emerald-600" />
+                      Takwim Akademik & Tarikh Penting ({smartSearchResults.calendar.length})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {smartSearchResults.calendar.map((event) => (
+                        <div key={event.id} className="p-3.5 glass-card rounded-2xl border border-white/60 shadow-2xs flex items-center justify-between gap-3">
+                          <div>
+                            <h5 className="font-black text-slate-900 text-xs">{event.title}</h5>
+                            <p className="text-[11px] text-slate-500 font-bold mt-0.5">{event.dateRange}</p>
+                          </div>
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            {event.type.toUpperCase()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Committee Matches */}
+                {smartSearchResults.committees.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-amber-600" />
+                      Jawatankuasa Kolej ({smartSearchResults.committees.length})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {smartSearchResults.committees.map((c, i) => (
+                        <div key={c.id || i} className="p-3.5 glass-card rounded-2xl border border-white/60 shadow-2xs">
+                          <h5 className="font-black text-slate-900 text-xs">{c.jawatankuasa}</h5>
+                          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-600 font-semibold">
+                            <span>Peranan: <strong className="text-indigo-700">{c.peranan}</strong></span>
+                            {c.staff_nama && <span>{c.staff_nama}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
           </div>
         ) : (
-          <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
-            <CampusReferenceHub />
-          </div>
+          /* =========================================================================
+              PRIMARY TAB VIEW SWITCHER
+             ========================================================================= */
+          <>
+            {/* VIEW A: UTAMA (SMARTHUB HOMEPAGE) */}
+            {activeTab === 'hub' && (
+              <div className="space-y-8">
+                
+                {/* 1. MAKLUMAT UTAMA (6 Core Categories Grid) */}
+                <section className="space-y-4 text-left">
+                  <div className="flex items-center justify-between px-1">
+                    <div>
+                      <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                        Maklumat Utama KPMBP SmartHub
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4.5">
+                    
+                    {/* Card 1: DIREKTORI STAF */}
+                    <div 
+                      onClick={() => setActiveTab('directory')}
+                      className="glass-card p-5.5 rounded-3xl border border-white/60 shadow-xs hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-black group-hover:scale-105 transition-transform">
+                          <UserCheck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
+                            Direktori Staf
+                          </h4>
+                          <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-1">
+                            Cari pensyarah dan kakitangan KPMBP
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-600">
+                        <span>Buka Direktori</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+
+                    {/* Card 2: KAMPUS & FASILITI */}
+                    <div 
+                      onClick={() => setActiveTab('kampus')}
+                      className="glass-card p-5.5 rounded-3xl border border-white/60 shadow-xs hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center font-black group-hover:scale-105 transition-transform">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-slate-900 group-hover:text-blue-600 transition-colors">
+                            Kampus & Fasiliti
+                          </h4>
+                          <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-1">
+                            Cari lokasi, jabatan dan nombor untuk dihubungi
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-600">
+                        <span>Lihat Kampus</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+
+                    {/* Card 3: AKADEMIK & TAKWIM */}
+                    <div 
+                      onClick={() => setActiveTab('akademik')}
+                      className="glass-card p-5.5 rounded-3xl border border-white/60 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-black group-hover:scale-105 transition-transform">
+                          <Calendar className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-slate-900 group-hover:text-emerald-600 transition-colors">
+                            Akademik & Takwim
+                          </h4>
+                          <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-1">
+                            Takwim, jadual dan portal akademik
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-600">
+                        <span>Rujuk Akademik</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+
+                    {/* Card 4: PANDUAN & DOKUMEN */}
+                    <div 
+                      onClick={() => setActiveTab('dokumen')}
+                      className="glass-card p-5.5 rounded-3xl border border-white/60 shadow-xs hover:border-amber-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center font-black group-hover:scale-105 transition-transform">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-slate-900 group-hover:text-amber-600 transition-colors">
+                            Panduan & Dokumen
+                          </h4>
+                          <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-1">
+                            Panduan, peraturan dan dokumen rujukan
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-amber-600">
+                        <span>Lihat Panduan</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+
+                    {/* Card 5: MAKLUMAN & HEBAHAN */}
+                    <div 
+                      onClick={() => setActiveTab('makluman')}
+                      className="glass-card p-5.5 rounded-3xl border border-white/60 shadow-xs hover:border-rose-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center font-black group-hover:scale-105 transition-transform">
+                          <Bell className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-slate-900 group-hover:text-rose-600 transition-colors">
+                            Makluman & Hebahan
+                          </h4>
+                          <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-1">
+                            Hebahan dan maklumat terkini KPMBP
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-rose-600">
+                        <span>Lihat Hebahan</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+
+                    {/* Card 6: KOMUNITI & JAWATANKUASA */}
+                    <div 
+                      onClick={() => setActiveTab('komuniti')}
+                      className="glass-card p-5.5 rounded-3xl border border-white/60 shadow-xs hover:border-purple-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center font-black group-hover:scale-105 transition-transform">
+                          <Users className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-slate-900 group-hover:text-purple-600 transition-colors">
+                            Komuniti & Jawatankuasa
+                          </h4>
+                          <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-1">
+                            Kelab, persatuan dan jawatankuasa KPMBP
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-purple-600">
+                        <span>Lihat Komuniti</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+
+                  </div>
+                </section>
+
+                {/* 2. DIREKTORI STAF DISCOVERY PREVIEW */}
+                <section className="space-y-4 text-left pt-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-1">
+                    <div>
+                      <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                        Direktori Staf & Tenaga Pengajar ({filteredStaff.length})
+                      </h3>
+                    </div>
+
+                    {/* Filter tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                      {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[]).map((div) => {
+                        const isActive = selectedDivision === div;
+                        return (
+                          <button
+                            key={div}
+                            onClick={() => setSelectedDivision(div)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                              isActive
+                                ? 'bg-indigo-600 text-white shadow-2xs font-extrabold'
+                                : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            {div}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Staff Grid */}
+                  {filteredStaff.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
+                      {filteredStaff.slice(0, 12).map((staff) => (
+                        <StaffCard
+                          key={staff.ID}
+                          staff={staff}
+                          onClick={(stf) => setSelectedStaff(stf)}
+                          isAdminMode={false}
+                          onEdit={() => {}}
+                          onOpenCommittee={(stf) => setCommitteeStaff(stf)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
+                      <p className="text-xs text-slate-500 font-semibold">Tiada maklumat tersedia buat masa ini.</p>
+                    </div>
+                  )}
+
+                  {filteredStaff.length > 12 && (
+                    <div className="text-center pt-2">
+                      <button
+                        onClick={() => setActiveTab('directory')}
+                        className="px-6 py-3 bg-white hover:bg-slate-50 text-indigo-700 rounded-2xl text-xs font-black border border-indigo-200 shadow-2xs transition-all cursor-pointer inline-flex items-center gap-2"
+                      >
+                        <span>Lihat Semua {filteredStaff.length} Kakitangan & Pensyarah</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </section>
+
+              </div>
+            )}
+
+            {/* VIEW B: DIREKTORI STAF (Full Directory View) */}
+            {activeTab === 'directory' && (
+              <div className="space-y-6 text-left">
+                
+                {/* Header info */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      <UserCheck className="w-5 h-5 text-indigo-600" />
+                      Direktori Rasmi Kakitangan & Pensyarah
+                    </h3>
+                    <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                      Cari mengikut nama, jawatan, bahagian, unit, nombor sambungan atau gred.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-indigo-700 bg-indigo-50 px-3 py-1 rounded-xl border border-indigo-100">
+                      {filteredStaff.length} Rekod Ditemui
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filter and selector row */}
+                <div className="glass-panel p-4 rounded-2xl border border-white/60 shadow-2xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+                  {/* Division tabs */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                    {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[]).map((div) => {
+                      const isActive = selectedDivision === div;
+                      const count = div === 'Semua' ? staffList.length : staffList.filter(s => s.Bahagian === div).length;
+                      return (
+                        <button
+                          key={div}
+                          onClick={() => setSelectedDivision(div)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                            isActive
+                              ? 'bg-indigo-600 text-white shadow-2xs font-extrabold'
+                              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          <span>{div}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${isActive ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Department selector */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                      className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:border-indigo-500 cursor-pointer shadow-2xs"
+                    >
+                      <option value="Semua">Semua Jabatan</option>
+                      {uniqueDepartments.filter(d => d !== 'Semua').map((dept) => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
+
+                    {(selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
+                      <button
+                        onClick={resetFilters}
+                        className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold cursor-pointer"
+                        title="Set Semula Saringan"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Staff grid */}
+                {filteredStaff.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
+                    {filteredStaff.map((staff) => (
+                      <StaffCard
+                        key={staff.ID}
+                        staff={staff}
+                        onClick={(stf) => setSelectedStaff(stf)}
+                        isAdminMode={false}
+                        onEdit={() => {}}
+                        onOpenCommittee={(stf) => setCommitteeStaff(stf)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-3">
+                    <p className="text-sm font-bold text-slate-700">Tiada maklumat tersedia buat masa ini.</p>
+                    <button
+                      onClick={resetFilters}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer"
+                    >
+                      Set Semula Saringan
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VIEW C: KAMPUS */}
+            {activeTab === 'kampus' && (
+              <div className="space-y-6 text-left">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-blue-600" />
+                    Kampus, Peta Lokasi & Direktori Telefon
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Panduan fasiliti fizikal, nombor talian bantuan, kaunter pentadbiran dan warden bertugas kolej.
+                  </p>
+                </div>
+
+                <div className="glass-panel p-6 rounded-3xl border border-white/60 shadow-xs">
+                  <CampusReferenceHub initialTab="peta" />
+                </div>
+              </div>
+            )}
+
+            {/* VIEW D: AKADEMIK */}
+            {activeTab === 'akademik' && (
+              <div className="space-y-6 text-left">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-emerald-600" />
+                    Akademik, Takwim & Portal Pembelajaran
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Takwim semester I sesi 2026/2027, jadual peperiksaan, cuti semester, dan pautan sistem SPMP/SISPEN/Teams.
+                  </p>
+                </div>
+
+                <div className="glass-panel p-6 rounded-3xl border border-white/60 shadow-xs">
+                  <CampusReferenceHub initialTab="takwim" />
+                </div>
+              </div>
+            )}
+
+            {/* VIEW E: DOKUMEN & PANDUAN */}
+            {activeTab === 'dokumen' && (
+              <div className="space-y-6 text-left">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-amber-600" />
+                    Panduan Rasmi, Polisi & Peraturan Kolej
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Ketetapan etika pemakaian staf & pelajar, peraturan keluar masuk kampus/homeleave dan tatatertib perpustakaan.
+                  </p>
+                </div>
+
+                <div className="glass-panel p-6 rounded-3xl border border-white/60 shadow-xs">
+                  <CampusReferenceHub initialTab="panduan" />
+                </div>
+              </div>
+            )}
+
+            {/* VIEW F: MAKLUMAN */}
+            {activeTab === 'makluman' && (
+              <div className="space-y-6 text-left">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-rose-600" />
+                    Makluman & Hebahan Semasa
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Pengumuman terkini berkaitan sesi akademik, pentadbiran, kebajikan asrama dan aktiviti kolej.
+                  </p>
+                </div>
+
+                {CAMPUS_ANNOUNCEMENTS.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {CAMPUS_ANNOUNCEMENTS.map((ann) => (
+                      <div 
+                        key={ann.id}
+                        className="glass-card p-5.5 rounded-3xl border border-white/60 shadow-xs space-y-3 flex flex-col justify-between"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-md ${
+                              ann.urgent 
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200' 
+                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                            }`}>
+                              {ann.badge || ann.category}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-bold">{ann.date}</span>
+                          </div>
+                          <h4 className="font-black text-slate-900 text-sm leading-snug">{ann.title}</h4>
+                          <p className="text-xs text-slate-600 font-medium leading-relaxed">{ann.summary}</p>
+                        </div>
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
+                          <span>{ann.category}</span>
+                          <span className="text-indigo-600 font-black flex items-center gap-0.5">KPMBP Rasmi</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="glass-panel p-12 text-center rounded-3xl border border-slate-200 bg-white/70">
+                    <p className="text-xs text-slate-500 font-semibold">Tiada maklumat tersedia buat masa ini.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VIEW G: KOMUNITI & JAWATANKUASA */}
+            {activeTab === 'komuniti' && (
+              <div className="space-y-6 text-left">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      <Users className="w-5 h-5 text-purple-600" />
+                      Jawatankuasa, Kelab & Komuniti Kolej
+                    </h3>
+                    <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                      Struktur jawatankuasa rasmi, persatuan mahasiswa, kelab minat, dan pengurusan komuniti kolej.
+                    </p>
+                  </div>
+                  <span className="text-xs font-black text-purple-700 bg-purple-50 px-3 py-1 rounded-xl border border-purple-100">
+                    {filteredCommittees.length} Jawatankuasa
+                  </span>
+                </div>
+
+                {/* Peringkat Filter Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {committeePeringkats.map((per) => {
+                    const isActive = selectedCommitteePeringkat === per;
+                    return (
+                      <button
+                        key={per}
+                        onClick={() => setSelectedCommitteePeringkat(per)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                          isActive
+                            ? 'bg-purple-600 text-white font-black shadow-2xs'
+                            : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}
+                      >
+                        {per}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Committees List */}
+                {filteredCommittees.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredCommittees.slice(0, 30).map((comm, idx) => (
+                      <div 
+                        key={comm.id || idx}
+                        className="glass-card p-4.5 rounded-2xl border border-white/60 shadow-2xs space-y-2 flex flex-col justify-between"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100">
+                              {comm.peringkat || 'Kolej'}
+                            </span>
+                            {comm.tahun && (
+                              <span className="text-[10px] text-slate-400 font-bold">{comm.tahun}</span>
+                            )}
+                          </div>
+                          <h4 className="font-black text-slate-900 text-xs leading-snug">{comm.jawatankuasa}</h4>
+                        </div>
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500 font-medium">Peranan:</span>
+                          <span className="font-extrabold text-indigo-700">{comm.peranan}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="glass-panel p-12 text-center rounded-3xl border border-slate-200 bg-white/70">
+                    <p className="text-xs text-slate-500 font-semibold">Tiada maklumat tersedia buat masa ini.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
 
       </main>
@@ -857,16 +1601,16 @@ export default function App() {
       <footer className="glass-panel border-t border-white/40 py-8 mt-16 text-center text-xs text-slate-500 backdrop-blur-md relative z-10">
         <div className="max-w-7xl mx-auto px-6 space-y-6">
           
-          {/* Statistik Direktori Section in Footer */}
+          {/* Ringkasan Statistik Direktori Kolej */}
           <div className="bg-white/60 border border-slate-200/60 rounded-3xl p-5 shadow-2xs">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-left">
               <div>
                 <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                  Statistik Direktori KPMBP
+                  Statistik Warga KPMBP SmartHub
                 </h3>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  Ringkasan data bilangan kakitangan dan kepakaran Kolej Profesional MARA Batu Pahat
+                  Ringkasan data kakitangan dan kepakaran Kolej Profesional MARA Bandar Penawar
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
@@ -898,6 +1642,39 @@ export default function App() {
                 Syncrozz
               </a>
             </p>
+
+            {/* Non-intrusive internal admin entry point */}
+            {!isAdminMode ? (
+              <button
+                type="button"
+                onClick={handleOpenAdmin}
+                className="inline-flex items-center gap-1.5 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer py-1 px-2.5 rounded-lg hover:bg-slate-100/70 text-[11px] font-medium"
+                title="Akses Pentadbir"
+              >
+                <Lock className="w-3 h-3" />
+                <span>Akses Pentadbir</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAdminConsoleOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-amber-800 hover:text-amber-950 transition-colors cursor-pointer py-1 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-[11px] font-bold"
+                  title="Buka Admin Console"
+                >
+                  <Settings className="w-3 h-3 text-amber-600" />
+                  <span>Admin Console</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdminLogout}
+                  className="text-slate-400 hover:text-rose-600 text-[11px] font-medium cursor-pointer"
+                  title="Log Keluar"
+                >
+                  Log Keluar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </footer>
@@ -966,6 +1743,7 @@ export default function App() {
           setIsAdminMode(true);
           setCurrentAdmin(admin || null);
           setIsAdminPinOpen(false);
+          setIsAdminConsoleOpen(true);
         }}
       />
 

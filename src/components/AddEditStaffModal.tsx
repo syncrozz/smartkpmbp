@@ -153,6 +153,7 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
                   onChange={handleChange}
                   className="w-full px-3 py-2 text-xs border border-white/40 rounded-xl bg-white/40 text-gray-800 font-semibold focus:outline-none focus:bg-white/80 focus:ring-2 focus:ring-indigo-500/15"
                 >
+                  <option value="Pengurusan">Pengurusan</option>
                   <option value="Akademik">Akademik</option>
                   <option value="Sokongan Akademik">Sokongan Akademik</option>
                   <option value="Pentadbiran">Pentadbiran</option>

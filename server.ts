@@ -1,10 +1,20 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import firebaseConfig from './firebase-applet-config.json';
+
+// Initialize server-side Firebase instance
+const serverFirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig, 'kpmbp-backend') : getApps()[0];
+const serverDb = getFirestore(serverFirebaseApp, firebaseConfig.firestoreDatabaseId);
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Body parser for JSON
+  app.use(express.json({ limit: '25mb' }));
 
   // CORS headers middleware
   app.use((req, res, next) => {
@@ -204,6 +214,115 @@ async function startServer() {
       return res.status(500).json({
         error: error.message || 'Gagal menyambung ke sheet StaffCommittee'
       });
+    }
+  });
+
+  // Direct fast server-side Firestore proxy endpoints
+  app.get('/api/firestore/staff', async (req, res) => {
+    try {
+      const summarySnap = await getDoc(doc(serverDb, 'system', 'staff_data'));
+      if (summarySnap.exists() && summarySnap.data()?.data) {
+        return res.json(summarySnap.data().data);
+      }
+      const staffSnap = await getDocs(collection(serverDb, 'staff'));
+      const staffList: any[] = [];
+      staffSnap.forEach((d) => staffList.push(d.data()));
+      return res.json(staffList);
+    } catch (err: any) {
+      console.warn('Server Firestore staff fetch error:', err.message);
+      return res.status(500).json({ error: err.message, data: [] });
+    }
+  });
+
+  app.post('/api/firestore/staff', async (req, res) => {
+    try {
+      const { staffList } = req.body;
+      if (!Array.isArray(staffList)) {
+        return res.status(400).json({ error: 'staffList array required' });
+      }
+      await setDoc(doc(serverDb, 'system', 'staff_data'), {
+        updatedAt: new Date().toISOString(),
+        count: staffList.length,
+        data: staffList,
+      });
+
+      // Background individual doc upserts
+      (async () => {
+        try {
+          const chunkSize = 400;
+          for (let i = 0; i < staffList.length; i += chunkSize) {
+            const chunk = staffList.slice(i, i + chunkSize);
+            const batch = writeBatch(serverDb);
+            chunk.forEach((s: any) => {
+              const rawId = s.ID || s.staff_id || `ST_${Math.random().toString(36).substring(2, 8)}`;
+              const docId = rawId.toUpperCase().trim().replace(/[\/\s]/g, '_');
+              batch.set(doc(serverDb, 'staff', docId), s, { merge: true });
+            });
+            await batch.commit();
+          }
+        } catch (bgErr) {
+          console.warn('Background staff chunk write error:', bgErr);
+        }
+      })();
+
+      return res.json({ success: true, count: staffList.length });
+    } catch (err: any) {
+      console.warn('Server Firestore staff save error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/firestore/committees', async (req, res) => {
+    try {
+      const summarySnap = await getDoc(doc(serverDb, 'system', 'committee_data'));
+      if (summarySnap.exists() && summarySnap.data()?.data) {
+        return res.json(summarySnap.data().data);
+      }
+      const commSnap = await getDocs(collection(serverDb, 'committees'));
+      const list: any[] = [];
+      commSnap.forEach((d) => list.push(d.data()));
+      return res.json(list);
+    } catch (err: any) {
+      console.warn('Server Firestore committee fetch error:', err.message);
+      return res.status(500).json({ error: err.message, data: [] });
+    }
+  });
+
+  app.post('/api/firestore/committees', async (req, res) => {
+    try {
+      const { committeesList } = req.body;
+      if (!Array.isArray(committeesList)) {
+        return res.status(400).json({ error: 'committeesList array required' });
+      }
+      await setDoc(doc(serverDb, 'system', 'committee_data'), {
+        updatedAt: new Date().toISOString(),
+        count: committeesList.length,
+        data: committeesList,
+      });
+
+      // Background individual committee doc upserts
+      (async () => {
+        try {
+          const chunkSize = 400;
+          for (let i = 0; i < committeesList.length; i += chunkSize) {
+            const chunk = committeesList.slice(i, i + chunkSize);
+            const batch = writeBatch(serverDb);
+            chunk.forEach((c: any, idx: number) => {
+              const rawId = c.id || `c-${c.staff_id || 'st'}-${i + idx}`;
+              const docId = rawId.replace(/[\/\s]/g, '_');
+              batch.set(doc(serverDb, 'committees', docId), c, { merge: true });
+            });
+            await batch.commit();
+          }
+        } catch (bgErr) {
+          console.warn('Background committee chunk write error:', bgErr);
+        }
+      })();
+
+      return res.json({ success: true, count: committeesList.length });
+    } catch (err: any) {
+      console.warn('Server Firestore committee save error:', err.message);
+      return res.status(500).json({ error: err.message });
     }
   });
 

@@ -386,31 +386,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 })()
               ) : null}
 
-              {/* Notis Akses Terhad bagi Bukan-Admin */}
-              {!isAdminMode && (
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3 text-left">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-slate-200 text-slate-600 rounded-xl shrink-0">
-                      <Lock className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-[11px] font-extrabold text-slate-700">Maklumat Peribadi & Kenderaan Dihadkan</h4>
-                      <p className="text-[10px] text-slate-500 font-medium">Daerah asal, tahun lahir & no. plat kenderaan hanya untuk Admin Mode.</p>
-                    </div>
-                  </div>
-                  {onOpenAdminPin && (
-                    <button
-                      type="button"
-                      onClick={onOpenAdminPin}
-                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold shrink-0 transition-all cursor-pointer shadow-2xs flex items-center gap-1"
-                    >
-                      <Lock className="w-3 h-3" />
-                      <span>Admin Mode</span>
-                    </button>
-                  )}
-                </div>
-              )}
-
               {/* Kelulusan Akademik (Kelayakan) */}
               <div className="flex gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                 <div className="mt-0.5 p-2 bg-emerald-100 text-emerald-700 rounded-xl h-9 w-9 flex items-center justify-center shrink-0">
@@ -480,7 +455,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                         Maklumat Jawatankuasa Staf
                       </h4>
                       <p className="text-[10px] text-amber-800/90 font-medium">
-                        Sumber Sheet: <span className="font-bold">StaffCommittee</span>
+                        Rekod Rasmi: <span className="font-bold">Jawatankuasa Kolej</span>
                       </p>
                     </div>
                   </div>
@@ -509,7 +484,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                   </div>
                 ) : (
                   <p className="text-xs text-amber-900/70 font-medium italic pt-1">
-                    Tiada rekod jawatankuasa khusus ditemui dalam sheet StaffCommittee.
+                    Tiada rekod jawatankuasa berdaftar buat masa ini.
                   </p>
                 )}
 
@@ -585,9 +560,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
             </div>
 
             {/* Footer Status Indicators */}
-            <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span>Sumber: {staff.Sumber || 'Google Sheets'}</span>
-              <span>Terakhir Disah: {staff.LastSync}</span>
+            <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <span>Kolej Profesional MARA Bandar Penawar</span>
+              <span>Direktori Rasmi KPMBP</span>
             </div>
 
             {/* Profile URL button */}

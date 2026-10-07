@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Directory KPMBP",
-  "short_name": "Dir KPMBP",
-  "description": "Direktori Rasmi Kakitangan & Pensyarah Kolej Profesional MARA Bandar Penawar (KPMBP)",
+  "name": "KPMBP SmartHub",
+  "short_name": "KPMBP SmartHub",
+  "description": "KPMBP SmartHub — Pusat Rujukan Maklumat Warga Kolej Profesional MARA Bandar Penawar (KPMBP)",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

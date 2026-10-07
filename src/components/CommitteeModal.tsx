@@ -121,7 +121,7 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
                 </h4>
               </div>
               <span className="text-xs text-slate-400 font-semibold">
-                Sheet: StaffCommittee
+                Rekod Rasmi Kolej
               </span>
             </div>
 
@@ -132,7 +132,7 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
                   Tiada maklumat jawatankuasa direkodkan untuk staf ini.
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  Maklumat diisi melalui Google Sheet (Tab: StaffCommittee)
+                  Maklumat diselaraskan melalui sistem rekod rasmi kolej.
                 </p>
               </div>
             ) : (

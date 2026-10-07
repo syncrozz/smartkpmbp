@@ -40,5 +40,19 @@
       },
       "required": ["id", "staff_id"]
     }
+  },
+  "firestore": {
+    "/staff/{staffId}": {
+      "schema": "staff",
+      "description": "Individual staff documents"
+    },
+    "/committees/{committeeId}": {
+      "schema": "committees",
+      "description": "Individual committee documents"
+    },
+    "/system/{systemDocId}": {
+      "schema": "object",
+      "description": "Aggregated cache and synchronization documents"
+    }
   }
 }

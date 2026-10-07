@@ -1,4 +1,4 @@
-const CACHE_NAME = 'directory-kpmbp-v1';
+const CACHE_NAME = 'kpmbp-smarthub-v4.5';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
